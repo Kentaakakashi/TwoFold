@@ -5,6 +5,9 @@ import LoginScreen from "./components/LoginScreen";
 import VideoOverlay from "./components/VideoOverlay";
 import HUD from "./components/HUD";
 import BuilderPanel from "./components/BuilderPanel";
+import ReactionOverlay from "./components/ReactionOverlay";
+import useReactions from "./hooks/useReactions";
+import ZenMode from "./components/ZenMode";
 
 export default function App() {
   const [joined, setJoined] = useState(false);
@@ -18,15 +21,24 @@ export default function App() {
   const [selectedItem, setSelectedItem] = useState(null);
   const [removeMode, setRemoveMode] = useState(false);
   const [zoom, setZoom] = useState(1);
-
-  const proximityRadius = 4;
-
+  const [zenMode, setZenMode] = useState(false);
+  const { reactions, reactionTrayOpen, toggleTray } = useReactions();
+  const proximityRadius = zenMode ? 1 : 4;
   const {
     activePeers, remoteStreams, localStream,
+    nearbyPlayers,
     conversations, myConvId, nearbyConversations,
     pendingRequests, requestStatus,
     requestJoin, respondToRequest, leaveConversation,
-  } = useProximityChat(players, myId, proximityRadius);
+  } = useProximityChat(players, myId, proximityRadius, zenMode);
+
+  // When zen mode turns ON, leave any active conversation
+  useEffect(() => {
+    if (zenMode && myConvId) {
+      leaveConversation();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zenMode]);
 
   // Sync state to global bridge for Phaser
   useEffect(() => {
@@ -35,8 +47,9 @@ export default function App() {
       window.__GATHER__.builderSelectedItem = selectedItem;
       window.__GATHER__.builderRemoveMode = removeMode;
       window.__GATHER__.onZoomChange = setZoom;
+      window.__GATHER__.proximityRadius = proximityRadius;
     }
-  }, [conversations, selectedItem, removeMode]);
+  }, [conversations, selectedItem, removeMode, proximityRadius]);
 
   const handlePlayersUpdate = useCallback((newPlayers, newMyId) => {
     setPlayers(newPlayers);
@@ -70,53 +83,74 @@ export default function App() {
     }
   }, [builderOpen]);
 
+  const onToggleZenMode = useCallback(() => {
+    
+    setZenMode((prev) => !prev);
+  }, []);
+
   if (!joined) return <LoginScreen onJoin={handleJoin} />;
 
   return (
     <>
+      <ZenMode
+        onToggle={onToggleZenMode}
+        zenMode={zenMode}
+        nearbyPlayers={nearbyPlayers}
+        players={players}
+      />
       <PhaserGame
         playerName={playerName}
         onPlayersUpdate={handlePlayersUpdate}
         onConnectionUpdate={handleConnectionUpdate}
       />
-      <HUD
-        players={players}
-        myId={myId}
-        connected={connected}
-        myConvId={myConvId}
-        nearbyConversations={nearbyConversations}
-        pendingRequests={pendingRequests}
-        requestStatus={requestStatus}
-        conversations={conversations}
-        onRequestJoin={requestJoin}
-        onRespondToRequest={respondToRequest}
-        onLeaveConversation={leaveConversation}
-      />
-      <BuilderPanel
-        open={builderOpen}
-        onToggle={handleToggleBuilder}
-        selectedItem={selectedItem}
-        onSelectItem={handleSelectItem}
-        onRemoveMode={handleRemoveMode}
-        removeMode={removeMode}
-      />
+      {!zenMode && (
+        <>
+          <ReactionOverlay
+            reactions={reactions}
+            open={reactionTrayOpen}
+            onToggle={toggleTray}
+          />
+          <HUD
+            players={players}
+            myId={myId}
+            connected={connected}
+            myConvId={myConvId}
+            nearbyConversations={nearbyConversations}
+            pendingRequests={pendingRequests}
+            requestStatus={requestStatus}
+            conversations={conversations}
+            onRequestJoin={requestJoin}
+            onRespondToRequest={respondToRequest}
+            onLeaveConversation={leaveConversation}
+          />
+          <BuilderPanel
+            open={builderOpen}
+            onToggle={handleToggleBuilder}
+            selectedItem={selectedItem}
+            onSelectItem={handleSelectItem}
+            onRemoveMode={handleRemoveMode}
+            removeMode={removeMode}
+          />
+          {zoom !== 1 && (
+            <div style={{
+              position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)",
+              zIndex: 50, background: "rgba(20,25,35,0.8)",
+              border: "1px solid rgba(100,150,200,0.3)", borderRadius: 4,
+              padding: "3px 10px", fontSize: 11, color: "#8898AA",
+              fontFamily: "'Segoe UI', system-ui, sans-serif", pointerEvents: "none",
+            }}>
+              {Math.round(zoom * 100)}%
+            </div>
+          )}
+        </>
+      )}
+      {/* VideoOverlay always mounted so video works in zen mode too */}
       <VideoOverlay
         remoteStreams={remoteStreams}
         localStream={localStream}
         players={players}
         activePeers={activePeers}
       />
-      {zoom !== 1 && (
-        <div style={{
-          position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)",
-          zIndex: 50, background: "rgba(20,25,35,0.8)",
-          border: "1px solid rgba(100,150,200,0.3)", borderRadius: 4,
-          padding: "3px 10px", fontSize: 11, color: "#8898AA",
-          fontFamily: "'Segoe UI', system-ui, sans-serif", pointerEvents: "none",
-        }}>
-          {Math.round(zoom * 100)}%
-        </div>
-      )}
     </>
   );
 }

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import SimplePeer from "simple-peer";
 import socket from "../utils/socket";
 
-export default function useProximityChat(players, myId, proximityRadius) {
+export default function useProximityChat(players, myId, proximityRadius, zenMode = false) {
   const [activePeers, setActivePeers] = useState({});
   const [remoteStreams, setRemoteStreams] = useState({});
   const [localStream, setLocalStream] = useState(null);
@@ -15,6 +15,7 @@ export default function useProximityChat(players, myId, proximityRadius) {
   const [myConvId, setMyConvId] = useState(null);            // which conv I'm in
   const [pendingRequests, setPendingRequests] = useState([]); // incoming join requests
   const [requestStatus, setRequestStatus] = useState(null);  // "pending" | "approved" | "denied" | null
+  const [nearbyPlayers, setNearbyPlayers] = useState({});    // { playerId: true } for all players within proximity radius
 
   const acquireStream = useCallback(async () => {
     if (localStreamRef.current) return localStreamRef.current;
@@ -211,7 +212,10 @@ export default function useProximityChat(players, myId, proximityRadius) {
 
     const checkProximity = () => {
       const me = players[myId];
-      if (!me) return;
+      if (!me) {
+        setNearbyPlayers({});
+        return;
+      }
 
       const currentNearby = new Set();
 
@@ -225,15 +229,13 @@ export default function useProximityChat(players, myId, proximityRadius) {
           const myConv = findPlayerConv(myId);
 
           if (!nearbyRef.current.has(player.id) && !peersRef.current[player.id]) {
-            if (!theirConvId && !myConv) {
-              // Neither in a conv — auto-connect and start a conversation
+            if (!zenMode && !theirConvId && !myConv) {
+              // Neither in a conv and not in zen mode — auto-connect and start a conversation
               if (myId < player.id) {
                 createPeer(player.id, true);
                 socket.emit("conv:start", { withId: player.id });
               }
             }
-            // If they're in a conv and I'm not → UI will show "Request to join"
-            // If we're both in the same conv → already connected
           }
         }
       });
@@ -253,6 +255,16 @@ export default function useProximityChat(players, myId, proximityRadius) {
 
       nearbyRef.current = currentNearby;
 
+      // Expose nearby players at a fixed notification radius (always 4 tiles)
+      // so zen mode (radius=1) still shows activity notifications
+      const NOTIFY_RADIUS = 4;
+      const notifyNearby = new Set();
+      Object.values(players).forEach((player) => {
+        if (player.id === myId) return;
+        if (getDistance(me, player) <= NOTIFY_RADIUS) notifyNearby.add(player.id);
+      });
+      setNearbyPlayers(Object.fromEntries([...notifyNearby].map((id) => [id, true])));
+
       // Release camera when nobody is nearby and not in a conversation
       if (currentNearby.size === 0 && Object.keys(peersRef.current).length === 0) {
         releaseStream();
@@ -269,7 +281,7 @@ export default function useProximityChat(players, myId, proximityRadius) {
 
     const interval = setInterval(checkProximity, 500);
     return () => clearInterval(interval);
-  }, [players, myId, proximityRadius, conversations, getDistance, createPeer, cleanupPeer, releaseStream]);
+  }, [players, myId, proximityRadius, zenMode, conversations, getDistance, createPeer, cleanupPeer, releaseStream]);
 
   useEffect(() => {
     return () => {
@@ -278,7 +290,8 @@ export default function useProximityChat(players, myId, proximityRadius) {
     };
   }, [cleanupPeer, releaseStream]);
 
-  // Compute nearby conversations for the UI
+  // Compute nearby conversations for the UI — always use radius 5 so
+  // zen mode users still see conversations they could request to join
   const nearbyConversations = (() => {
     if (!myId || !players[myId]) return [];
     const me = players[myId];
@@ -287,11 +300,11 @@ export default function useProximityChat(players, myId, proximityRadius) {
 
     Object.entries(conversations).forEach(([convId, conv]) => {
       if (myConv && myConv[0] === convId) return; // Skip my own conv
-      // Check if any member is nearby
+      // Check if any member is within 5 tiles (independent of proximityRadius)
       const hasNearbyMember = conv.members.some((mid) => {
         const p = players[mid];
         if (!p) return false;
-        return getDistance(me, p) <= proximityRadius + 1;
+        return getDistance(me, p) <= 5;
       });
       if (hasNearbyMember) {
         result.push({ convId, ...conv });
@@ -302,6 +315,7 @@ export default function useProximityChat(players, myId, proximityRadius) {
 
   return {
     activePeers, remoteStreams, localStream,
+    nearbyPlayers,
     // Conversation state
     conversations, myConvId, nearbyConversations,
     pendingRequests, requestStatus,

@@ -40,6 +40,8 @@ export default class OfficeScene extends Phaser.Scene {
     this._pendingJoins = [];
     this._pendingMoves = [];
     this._pendingLeaves = [];
+
+    this.reactionTexts = {};
   }
 
   create() {
@@ -180,6 +182,10 @@ export default class OfficeScene extends Phaser.Scene {
       this._notify();
     });
 
+    socket.on("player:reacted", (data) => {
+      this._showReactionEmoji(data.id, data.emoji);
+    });
+
     socket.on("connect", () => this._notifyConnection(true));
     socket.on("disconnect", () => this._notifyConnection(false));
 
@@ -208,6 +214,8 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   _processInit(data) {
+    if (!this.cameras?.main) return;
+
     this.mapData = data.map;
     this.mapCols = data.mapCols;
     this.mapRows = data.mapRows;
@@ -215,6 +223,7 @@ export default class OfficeScene extends Phaser.Scene {
     this.proximityRadius = data.proximityRadius;
     this.myId = data.playerId;
     this.players = data.players;
+
 
     if (data.conversations && window.__GATHER__?.onConversationsUpdate) {
       window.__GATHER__.onConversationsUpdate(data.conversations);
@@ -311,10 +320,47 @@ export default class OfficeScene extends Phaser.Scene {
 
   _removeSprite(id) {
     const s = this.playerSprites[id];
-    if (s) { if (s.ring) s.ring.destroy(); s.destroy(); delete this.playerSprites[id]; }
+    if (s) {
+      if (s.ring) s.ring.destroy(); s.destroy(); delete this.playerSprites[id];
+
+      if (this.reactionTexts[id]) {
+        this.reactionTexts[id].destroy();
+        delete this.reactionTexts[id];
+      }
+    }
     const n = this.playerNames[id];
     if (n) { n.destroy(); delete this.playerNames[id]; }
     this._removeBubble(id);
+  }
+
+  _showReactionEmoji(playerId, emoji) {
+    // Destroy any in-flight reaction for this player
+    if (this.reactionTexts[playerId]) {
+      this.reactionTexts[playerId].destroy();
+      delete this.reactionTexts[playerId];
+    }
+    const s = this.playerSprites[playerId];
+    if (!s) return;
+
+    const text = this.add.text(s.x, s.y - 42, emoji, {
+      fontSize: "22px",
+    }).setOrigin(0.5, 1).setDepth(20);
+
+    this.reactionTexts[playerId] = text;
+
+    this.tweens.add({
+      targets: text,
+      y: text.y - 36,
+      alpha: 0,
+      duration: 2500,
+      ease: "Sine.easeIn",
+      onComplete: () => {
+        text.destroy();
+        if (this.reactionTexts[playerId] === text) {
+          delete this.reactionTexts[playerId];
+        }
+      },
+    });
   }
 
   // ── Furniture sprite management ────────────────────────────
@@ -497,8 +543,9 @@ export default class OfficeScene extends Phaser.Scene {
     const me = this.players[this.myId];
     const cx = me.x * this.tileSize + this.tileSize / 2;
     const cy = me.y * this.tileSize + this.tileSize / 2;
+    const proximityRadius = window.__GATHER__?.proximityRadius ?? this.proximityRadius;
     this.proximityGfx.lineStyle(2, 0x4A90D0, 0.15);
-    this.proximityGfx.strokeCircle(cx, cy, this.proximityRadius * this.tileSize);
+    this.proximityGfx.strokeCircle(cx, cy, proximityRadius * this.tileSize);
 
     // Movement (only if not in builder placement mode)
     if (time - this.lastMoveTime < MOVE_COOLDOWN) return;
@@ -534,6 +581,7 @@ export default class OfficeScene extends Phaser.Scene {
     socket.off("disconnect");
     socket.off("furniture:placed");
     socket.off("furniture:removed");
+    socket.off("player:reacted");
     socket.disconnect();
   }
 }

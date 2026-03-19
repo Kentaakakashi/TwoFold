@@ -120,7 +120,7 @@ export default function BuilderPanel({ open, onToggle, selectedItem, onSelectIte
         onClick={onToggle}
         style={{
           position: "fixed",
-          top: 12,
+          top: 72,
           right: 12,
           zIndex: 60,
           background: open ? "rgba(78,205,196,0.3)" : "rgba(20,25,35,0.9)",
@@ -142,7 +142,7 @@ export default function BuilderPanel({ open, onToggle, selectedItem, onSelectIte
       {open && (
         <div style={{
           position: "fixed",
-          top: 48,
+          top: 102,
           right: 12,
           zIndex: 55,
           background: "rgba(20,25,35,0.95)",
