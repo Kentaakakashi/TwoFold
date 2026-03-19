@@ -9,16 +9,12 @@
 - **Hot Reload completo** — Cliente (Vite) y servidor (Nodemon) recargan automáticamente al guardar cambios sin reiniciar los contenedores.
 - **Volúmenes nombrados** — `client_node_modules` y `server_node_modules` declarados en `docker-compose.yml` como volúmenes Docker gestionados. Evita que el bind-mount del código fuente sobreescriba los módulos instalados dentro de la imagen.
 - **Polling de archivos** — `usePolling: true` + `interval: 300` en `vite.config.js` y la flag `-L` en Nodemon garantizan detección de cambios en Docker sobre Windows (donde los eventos `inotify` no funcionan).
-- **`Dockerfile.dev` del cliente corregido** — Antes ejecutaba `nodemon server.js`. Ahora usa `CMD ["npx", "vite", "--host"]` correctamente.
-- **Puerto del servidor corregido** — `EXPOSE` cambiado de 3000 → 3001 para coincidir con `docker-compose.yml` y la variable `PORT`.
-- **Imagen base `node:22-slim`** — Cambiada de `node:22-alpine` (musl libc) a `node:22-slim` (Debian glibc) en el cliente para compatibilidad con los binarios nativos NAPI de Vite 8 / Oxc.
 
 ---
 
 ## 🏗️ Reestructuración del Proyecto
 
 - **Separación clara cliente/servidor** — Cada servicio tiene su propio `Dockerfile.dev`. El cliente solo sabe de Vite; el servidor solo sabe de Node/Nodemon.
-- **`docker-compose.yml` limpio** — Eliminados comentarios obsoletos y el campo `command:` redundante del servidor.
 - **`jsconfig.json` en el cliente** — Añadido con opciones completas (`target`, `module`, `moduleResolution`, `jsx`, `strict`, etc.) para que el transpilador Oxc de Vite 8 resuelva correctamente los tipos JSX.
 - **Variables de entorno correctas** — `VITE_SERVER_URL=http://localhost:3001` en el cliente; `PORT=3001` y `NODE_ENV=development` en el servidor.
 
