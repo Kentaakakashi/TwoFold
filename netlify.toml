@@ -1,0 +1,11 @@
+# Build the Vite frontend from the client workspace.
+[build]
+  base = "client"
+  command = "npm run build"
+  publish = "dist"
+
+# Let client-side routes load directly instead of returning Netlify's 404 page.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
